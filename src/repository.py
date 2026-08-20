@@ -38,7 +38,10 @@ class Repository:
         )
 
         with connection.cursor() as cursor:
-            with open("migrations/add_myclass_table.sql", "r") as file:
-                query = file.read().replace("\n", "")
+            directory = os.fsencode("migrations")
+
+            for file in os.listdir(directory):
+                filename = os.fsdecode(file)
+                query = open("migrations/" + filename, "r").read().replace("\n", "")
                 cursor.execute(query=query)
                 connection.commit()
