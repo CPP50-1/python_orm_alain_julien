@@ -8,9 +8,14 @@ class BaseEntity(ABC):
         pass
 
     def generate_sql(self):
-        sql = f"CREATE TABLE {self.table_name()} (\n"
+        columns = []
+
         for name, attr in self.__class__.__dict__.items():
             if callable(attr) and hasattr(attr, "field_type"):
-                sql += f"{name} {attr.field_type},\n"
-        sql += ");\n"
+                columns.append(f"{name} {attr.field_type}")
+
+        sql = f"CREATE TABLE {self.table_name()} (\n"
+        sql += ",\n".join(columns)
+        sql += "\n);\n"
+
         return sql
