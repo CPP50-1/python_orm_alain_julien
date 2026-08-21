@@ -1,14 +1,16 @@
 
 class Field:
-    def __init__(self, unique, foreign, default_value, expected_type):
+    def __init__(self, unique, foreign, default_value, required, expected_type):
         self.attribute_name = None
         self.sql_type = expected_type # supplied by the subclass
         self.unique = unique # todo needed?
         self.foreign = foreign # todo needed?
         self.default_value = default_value
+        self.required = required # todo needed?
 
     def __set_name__(self, owner, name):
         self.attribute_name = name
+        owner._fields[name] = self
 
     def __get__(self, instance, owner):
         if instance:
@@ -30,13 +32,16 @@ class Field:
             value = self.check_and_coerce(value)
         except ValueError as e:
             raise e
-        instance.__dict__[self.attribute_name] = value
+        value_change = False
         try:
             current_value = instance.__dict__[self.attribute_name]
             value_change = current_value != value
-        except KeyError:
-            value_change = True
+        except KeyError as e:
+            # No value yet. Won't mark as dirty
+            instance.__dict__[self.attribute_name] = value
+
         if value_change:
+            instance.__dict__[self.attribute_name] = value
             instance._is_dirty = True
             instance._dirty_fields.add(self.attribute_name)
 
@@ -49,8 +54,8 @@ class Field:
         return value or self.default_value
 
 class BooleanField(Field):
-    def __init__(self, unique:bool=False, foreign:bool=False, default_value=None):
-        super().__init__(unique, foreign, default_value, "BOOLEAN")
+    def __init__(self, unique:bool=False, foreign:bool=False, required:bool=True, default_value=None):
+        super().__init__(unique, foreign, default_value, required, "BOOLEAN")
 
     def check_and_coerce(self, value) -> bool:
         '''
@@ -64,8 +69,8 @@ class BooleanField(Field):
         return True if value else False
 
 class IntegerField(Field):
-    def __init__(self, unique:bool=False, foreign:bool=False, default_value=None):
-        super().__init__(unique, foreign, default_value, "INT")
+    def __init__(self, unique:bool=False, foreign:bool=False, default_value=None, required=True):
+        super().__init__(unique, foreign, default_value, required, "INT")
 
     def check_and_coerce(self, value) -> int:
         '''
@@ -80,9 +85,27 @@ class IntegerField(Field):
             return value
         return int(value) # may raise ValueError
 
+class SerialField(Field):
+    def __init__(self, unique:bool=True, foreign:bool=False, default_value=None, required=False):
+        super().__init__(unique, foreign, default_value, required, "SERIAL")
+
+    def check_and_coerce(self, value) -> int|None:
+        '''
+        Verify value is an (possibly stringified) int or None. However, if None, don't use the default
+        :param value: the value to be checked
+        :return: the value coerced to an int
+        :exception ValueError: if value may not be coerced to an int
+        '''
+        if isinstance(value, int):
+            return value
+        elif value is None:
+            return None
+        else:
+            return int(value) # may raise ValueError
+
 class CharField(Field):
-    def __init__(self, unique: bool = False, foreign: bool = False, default_value=None, max_len=None):
-        super().__init__(unique, foreign, default_value, f"VARCHAR({max_len})" if max_len else "TEXT")
+    def __init__(self, unique: bool = False, foreign: bool = False, default_value=None, required:bool=True, max_len=None):
+        super().__init__(unique, foreign, default_value, required, f"VARCHAR({max_len})" if max_len else "TEXT")
         self.max_len = max_len
 
     def check_and_coerce(self, value) -> str:
@@ -112,7 +135,7 @@ if __name__=="__main__":
     class TestTable():
         bool_column = BooleanField(default_value=True)
         int_column = IntegerField(default_value=999)
-        char_column = CharField(max_len=10, default_value="-")
+        char_column = CharField(max_len=10, default_value="-", required=False)
 
         def __init__(self, bool_value, int_value, char_value):
             self.bool_column = bool_value
@@ -126,4 +149,5 @@ if __name__=="__main__":
     i1 = test(True, 123, "ABC")
     i2 = test(False, "234", "ABCDEFGHIJ")
     i3 = test(False, "234s", "ABCDEFGHIJ")
+    i5 = test(False, None, char_value=None)
 
